@@ -1,0 +1,196 @@
+```python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Gerador Automático do Projeto Android 'Switch Speaker' + Compilador na Nuvem (GitHub Actions)
+---------------------------------------------------------------------------------------------
+Como usar:
+  1. Execute este script no seu computador: python criar_projeto_completo.py
+  2. Ele criará a pasta 'SwitchSpeakerProject' com todos os arquivos prontos.
+  3. Você pode abrir essa pasta direto no Android Studio OU subir os arquivos em um
+     repositório gratuito no GitHub para que o próprio GitHub gere o arquivo .APK na nuvem!
+"""
+
+import os
+
+PROJECT_ROOT = "SwitchSpeakerProject"
+
+FILES = {
+    "settings.gradle.kts": """pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "SwitchSpeaker"
+include(":app")
+""",
+
+    "build.gradle.kts": """plugins {
+    id("com.android.application") version "8.5.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}
+""",
+
+    "gradle.properties": """org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+""",
+
+    "app/build.gradle.kts": """plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.example.switchspeaker"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.switchspeaker"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.activity:activity-compose:1.9.1")
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+
+    val media3Version = "1.4.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-rtsp:$media3Version")
+    implementation("androidx.media3:media3-common:$media3Version")
+}
+""",
+
+    "app/src/main/AndroidManifest.xml": """<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Switch Speaker"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".SwitchAudioForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+    </application>
+</manifest>
+""",
+
+    ".github/workflows/build-apk.yml": """name: Gerar SwitchSpeaker APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar codigo do repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Gerar estrutura caso tenha subido apenas o script Python
+        run: |
+          if [ ! -d "app" ] && [ -f "criar_projeto_completo.py" ]; then
+            python3 criar_projeto_completo.py
+            cp -r SwitchSpeakerProject/* .
+          fi
+
+      - name: Compilar APK Debug
+        run: gradle assembleDebug
+
+      - name: Disponibilizar SwitchSpeaker.apk para Download
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwitchSpeaker-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+""",
+
+    "app/src/main/java/com/example/switchspeaker/SwitchAudioSpeakerApp.kt": '// ============================================================================\n// SwitchAudioSpeakerApp.kt\n// Aplicativo Android para atuar como Caixinha de Som Sem Fio do Nintendo Switch\n// Compatível com SysDVR (Modo RTSP Porta 6666 e Modo TCP PCM Porta 9922)\n// Funciona via Rede Wi-Fi Local (192.168.x.x) ou IP Fixo do Tailscale (100.x.y.z)\n// ============================================================================\n// IMPORTANTE: Altere a linha \'package\' abaixo caso o pacote do seu projeto no\n// Android Studio tenha outro nome.\npackage com.example.switchspeaker\n\nimport android.Manifest\nimport android.app.Notification\nimport android.app.NotificationChannel\nimport android.app.NotificationManager\nimport android.app.PendingIntent\nimport android.app.Service\nimport android.content.Context\nimport android.content.Intent\nimport android.content.pm.PackageManager\nimport android.content.pm.ServiceInfo\nimport android.media.AudioAttributes\nimport android.media.AudioFormat\nimport android.media.AudioTrack\nimport android.media.audiofx.LoudnessEnhancer\nimport android.net.wifi.WifiManager\nimport android.os.Build\nimport android.os.Bundle\nimport android.os.IBinder\nimport android.os.PowerManager\nimport androidx.activity.ComponentActivity\nimport androidx.activity.compose.setContent\nimport androidx.activity.result.contract.ActivityResultContracts\nimport androidx.annotation.OptIn\nimport androidx.compose.foundation.background\nimport androidx.compose.foundation.layout.*\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.shape.CircleShape\nimport androidx.compose.foundation.shape.RoundedCornerShape\nimport androidx.compose.foundation.text.KeyboardOptions\nimport androidx.compose.foundation.verticalScroll\nimport androidx.compose.material3.*\nimport androidx.compose.runtime.*\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.draw.clip\nimport androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.platform.LocalContext\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.text.input.KeyboardType\nimport androidx.compose.ui.unit.dp\nimport androidx.compose.ui.unit.sp\nimport androidx.core.app.NotificationCompat\nimport androidx.core.content.ContextCompat\nimport androidx.media3.common.C\nimport androidx.media3.common.MediaItem\nimport androidx.media3.common.PlaybackException\nimport androidx.media3.common.Player\nimport androidx.media3.common.util.UnstableApi\nimport androidx.media3.exoplayer.DefaultLoadControl\nimport androidx.media3.exoplayer.ExoPlayer\nimport androidx.media3.exoplayer.rtsp.RtspMediaSource\nimport kotlinx.coroutines.*\nimport kotlinx.coroutines.flow.MutableStateFlow\nimport kotlinx.coroutines.flow.StateFlow\nimport java.io.InputStream\nimport java.net.InetSocketAddress\nimport java.net.Socket\n\n// ============================================================================\n// 1. ESTADO GLOBAL COMPARTILHADO ENTRE A TELA (UI) E O SERVIÇO EM SEGUNDO PLANO\n// ============================================================================\nenum class StreamMode(val label: String, val defaultPort: Int, val description: String) {\n    RTSP_DEFAULT(\n        label = "SysDVR RTSP (Padrão)",\n        defaultPort = 6666,\n        description = "Conecta ao modo \'Simple Network\' do SysDVR (rtsp://IP:6666/) descartando o vídeo e tocando apenas o áudio 48kHz."\n    ),\n    TCP_RAW_PCM(\n        label = "TCP Bridge (Áudio PCM)",\n        defaultPort = 9922,\n        description = "Lê pacotes de áudio PCM 16-bit 48kHz estéreo diretamente via Socket TCP de baixa latência."\n    )\n}\n\nenum class LatencyPreset(val label: String, val minBufferMs: Int, val maxBufferMs: Int, val startBufferMs: Int) {\n    ULTRA_LOW("Ultra Baixa (~50ms)", 50, 150, 40),\n    BALANCED("Equilibrada (~120ms)", 120, 300, 80),\n    STABLE("Estável (~250ms)", 250, 600, 150)\n}\n\ndata class SpeakerUiState(\n    val isStreaming: Boolean = false,\n    val statusMessage: String = "Desconectado — Pronto para parear com o Switch",\n    val isError: Boolean = false,\n    val pingResult: String? = null\n)\n\nobject SpeakerStateHolder {\n    private val _state = MutableStateFlow(SpeakerUiState())\n    val state: StateFlow<SpeakerUiState> = _state\n\n    fun update(\n        isStreaming: Boolean = _state.value.isStreaming,\n        statusMessage: String = _state.value.statusMessage,\n        isError: Boolean = false,\n        pingResult: String? = _state.value.pingResult\n    ) {\n        _state.value = SpeakerUiState(\n            isStreaming = isStreaming,\n            statusMessage = statusMessage,\n            isError = isError,\n            pingResult = pingResult\n        )\n    }\n}\n\n// ============================================================================\n// 2. ACTIVITY PRINCIPAL (INTERFACE DO USUÁRIO EM JETPACK COMPOSE)\n// ============================================================================\nclass MainActivity : ComponentActivity() {\n\n    private val notificationPermissionLauncher = registerForActivityResult(\n        ActivityResultContracts.RequestPermission()\n    ) { _ -> }\n\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n\n        // Solicita permissão de notificação no Android 13+ para exibir o serviço em segundo plano\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)\n                != PackageManager.PERMISSION_GRANTED\n            ) {\n                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)\n            }\n        }\n\n        setContent {\n            MaterialTheme(\n                colorScheme = darkColorScheme(\n                    primary = Color(0xFFE60012),       // Vermelho Nintendo Switch\n                    secondary = Color(0xFF00C3E3),     // Azul Neon Joy-Con\n                    background = Color(0xFF121417),\n                    surface = Color(0xFF1E2229)\n                )\n            ) {\n                Surface(\n                    modifier = Modifier.fillMaxSize(),\n                    color = MaterialTheme.colorScheme.background\n                ) {\n                    SwitchSpeakerScreen()\n                }\n            }\n        }\n    }\n}\n\n@Composable\nfun SwitchSpeakerScreen() {\n    val context = LocalContext.current\n    val prefs = remember { context.getSharedPreferences("switch_speaker_prefs", Context.MODE_PRIVATE) }\n    val uiState by SpeakerStateHolder.state.collectAsState()\n    val coroutineScope = rememberCoroutineScope()\n\n    var switchIp by remember { mutableStateOf(prefs.getString("switch_ip", "192.168.1.100") ?: "192.168.1.100") }\n    var selectedMode by remember { mutableStateOf(StreamMode.RTSP_DEFAULT) }\n    var selectedLatency by remember { mutableStateOf(LatencyPreset.ULTRA_LOW) }\n    var useUdpInRtsp by remember { mutableStateOf(true) }\n    var volumeBoostDb by remember { mutableStateOf(0f) } // 0 a +12 dB de amplificação extra\n\n    Column(\n        modifier = Modifier\n            .fillMaxSize()\n            .verticalScroll(rememberScrollState())\n            .padding(20.dp),\n        verticalArrangement = Arrangement.spacedBy(16.dp)\n    ) {\n        // Cabeçalho\n        Row(\n            verticalAlignment = Alignment.CenterVertically,\n            horizontalArrangement = Arrangement.spacedBy(12.dp)\n        ) {\n            Box(\n                modifier = Modifier\n                    .size(16.dp)\n                    .clip(CircleShape)\n                    .background(if (uiState.isStreaming) Color(0xFF00E676) else Color(0xFFE60012))\n            )\n            Column {\n                Text(\n                    text = "Switch Wi-Fi Speaker",\n                    fontSize = 22.sp,\n                    fontWeight = FontWeight.Bold,\n                    color = Color.White\n                )\n                Text(\n                    text = "Receptor de Áudio SysDVR (LAN & Tailscale)",\n                    fontSize = 13.sp,\n                    color = Color(0xFF9AA5B1)\n                )\n            }\n        }\n\n        // Cartão de Status\n        Card(\n            colors = CardDefaults.cardColors(\n                containerColor = if (uiState.isError) Color(0xFF3B1A1E) else MaterialTheme.colorScheme.surface\n            ),\n            shape = RoundedCornerShape(14.dp),\n            modifier = Modifier.fillMaxWidth()\n        ) {\n            Column(modifier = Modifier.padding(16.dp)) {\n                Text(\n                    text = if (uiState.isStreaming) "TOCANDO ÁUDIO DO SWITCH" else "STATUS DA CONEXÃO",\n                    fontSize = 11.sp,\n                    fontWeight = FontWeight.Bold,\n                    color = if (uiState.isStreaming) Color(0xFF00E676) else Color(0xFF00C3E3)\n                )\n                Spacer(modifier = Modifier.height(4.dp))\n                Text(\n                    text = uiState.statusMessage,\n                    fontSize = 15.sp,\n                    color = Color.White\n                )\n                if (uiState.pingResult != null) {\n                    Spacer(modifier = Modifier.height(6.dp))\n                    Text(\n                        text = uiState.pingResult!!,\n                        fontSize = 13.sp,\n                        color = Color(0xFFCBD2D9)\n                    )\n                }\n            }\n        }\n\n        // Entrada de IP (Wi-Fi Local ou Tailscale)\n        Card(\n            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),\n            shape = RoundedCornerShape(14.dp),\n            modifier = Modifier.fillMaxWidth()\n        ) {\n            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {\n                Text(\n                    text = "Endereço IP do Nintendo Switch",\n                    fontWeight = FontWeight.SemiBold,\n                    color = Color.White\n                )\n                OutlinedTextField(\n                    value = switchIp,\n                    onValueChange = {\n                        switchIp = it.trim()\n                        prefs.edit().putString("switch_ip", switchIp).apply()\n                    },\n                    enabled = !uiState.isStreaming,\n                    label = { Text("IP Local (192.168.x.x) ou Tailscale (100.x.y.z)") },\n                    singleLine = true,\n                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),\n                    modifier = Modifier.fillMaxWidth()\n                )\n\n                // Botão para testar se a porta do Switch está acessível antes de iniciar\n                OutlinedButton(\n                    onClick = {\n                        val targetIp = switchIp\n                        val port = selectedMode.defaultPort\n                        SpeakerStateHolder.update(pingResult = "Testando conexão com $targetIp:$port...")\n                        coroutineScope.launch(Dispatchers.IO) {\n                            val start = System.currentTimeMillis()\n                            try {\n                                Socket().use { socket ->\n                                    socket.connect(InetSocketAddress(targetIp, port), 2500)\n                                }\n                                val rtt = System.currentTimeMillis() - start\n                                SpeakerStateHolder.update(\n                                    pingResult = "Switch encontrado em $targetIp:$port! Tempo de resposta: ${rtt}ms"\n                                )\n                            } catch (e: Exception) {\n                                SpeakerStateHolder.update(\n                                    pingResult = "Sem resposta em $targetIp:$port. Verifique se um jogo compatível está aberto e o SysDVR está ativo."\n                                )\n                            }\n                        }\n                    },\n                    modifier = Modifier.fillMaxWidth()\n                ) {\n                    Text("Testar Alcance do Switch (Ping Porta ${selectedMode.defaultPort})")\n                }\n            }\n        }\n\n        // Modo de Transmissão SysDVR\n        Card(\n            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),\n            shape = RoundedCornerShape(14.dp),\n            modifier = Modifier.fillMaxWidth()\n        ) {\n            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {\n                Text(\n                    text = "Modo configurável no SysDVR",\n                    fontWeight = FontWeight.SemiBold,\n                    color = Color.White\n                )\n                StreamMode.entries.forEach { mode ->\n                    Row(\n                        verticalAlignment = Alignment.CenterVertically,\n                        modifier = Modifier.fillMaxWidth()\n                    ) {\n                        RadioButton(\n                            selected = (selectedMode == mode),\n                            enabled = !uiState.isStreaming,\n                            onClick = { selectedMode = mode }\n                        )\n                        Column {\n                            Text(text = mode.label, color = Color.White, fontWeight = FontWeight.Medium)\n                            Text(text = mode.description, fontSize = 12.sp, color = Color(0xFF9AA5B1))\n                        }\n                    }\n                }\n\n                if (selectedMode == StreamMode.RTSP_DEFAULT) {\n                    Spacer(modifier = Modifier.height(4.dp))\n                    Row(\n                        verticalAlignment = Alignment.CenterVertically,\n                        horizontalArrangement = Arrangement.SpaceBetween,\n                        modifier = Modifier.fillMaxWidth()\n                    ) {\n                        Column(modifier = Modifier.weight(1f)) {\n                            Text("Priorizar pacotes UDP no RTSP", color = Color.White, fontSize = 14.sp)\n                            Text(\n                                "Menor atraso na mesma rede Wi-Fi (desative se o som picotar)",\n                                color = Color(0xFF9AA5B1),\n                                fontSize = 12.sp\n                            )\n                        }\n                        Switch(\n                            checked = useUdpInRtsp,\n                            enabled = !uiState.isStreaming,\n                            onCheckedChange = { useUdpInRtsp = it }\n                        )\n                    }\n                }\n            }\n        }\n\n        // Ajuste de Latência e Amplificador de Volume\n        Card(\n            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),\n            shape = RoundedCornerShape(14.dp),\n            modifier = Modifier.fillMaxWidth()\n        ) {\n            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {\n                Text(\n                    text = "Buffer de Latência & Volume",\n                    fontWeight = FontWeight.SemiBold,\n                    color = Color.White\n                )\n                Row(\n                    modifier = Modifier.fillMaxWidth(),\n                    horizontalArrangement = Arrangement.spacedBy(6.dp)\n                ) {\n                    LatencyPreset.entries.forEach { preset ->\n                        FilterChip(\n                            selected = (selectedLatency == preset),\n                            enabled = !uiState.isStreaming,\n                            onClick = { selectedLatency = preset },\n                            label = { Text(preset.label, fontSize = 11.sp) },\n                            modifier = Modifier.weight(1f)\n                        )\n                    }\n                }\n\n                Spacer(modifier = Modifier.height(4.dp))\n                Text(\n                    text = "Reforço de Volume (Boost): +${volumeBoostDb.toInt()} dB",\n                    color = Color.White,\n                    fontSize = 14.sp\n                )\n                Slider(\n                    value = volumeBoostDb,\n                    onValueChange = {\n                        volumeBoostDb = it\n                        // Atualiza o ganho em tempo real caso já esteja tocando\n                        val boostIntent = Intent(context, SwitchAudioForegroundService::class.java).apply {\n                            action = SwitchAudioForegroundService.ACTION_SET_BOOST\n                            putExtra(SwitchAudioForegroundService.EXTRA_BOOST_DB, it.toInt())\n                        }\n                        context.startService(boostIntent)\n                    },\n                    valueRange = 0f..12f,\n                    steps = 11\n                )\n            }\n        }\n\n        // Botão Principal Ligar / Desligar Caixinha de Som\n        Button(\n            onClick = {\n                if (uiState.isStreaming) {\n                    val stopIntent = Intent(context, SwitchAudioForegroundService::class.java).apply {\n                        action = SwitchAudioForegroundService.ACTION_STOP\n                    }\n                    context.startService(stopIntent)\n                } else {\n                    val startIntent = Intent(context, SwitchAudioForegroundService::class.java).apply {\n                        action = SwitchAudioForegroundService.ACTION_START\n                        putExtra(SwitchAudioForegroundService.EXTRA_IP, switchIp)\n                        putExtra(SwitchAudioForegroundService.EXTRA_MODE, selectedMode.name)\n                        putExtra(SwitchAudioForegroundService.EXTRA_LATENCY, selectedLatency.name)\n                        putExtra(SwitchAudioForegroundService.EXTRA_USE_UDP, useUdpInRtsp)\n                        putExtra(SwitchAudioForegroundService.EXTRA_BOOST_DB, volumeBoostDb.toInt())\n                    }\n                    ContextCompat.startForegroundService(context, startIntent)\n                }\n            },\n            colors = ButtonDefaults.buttonColors(\n                containerColor = if (uiState.isStreaming) Color(0xFFD32F2F) else Color(0xFFE60012)\n            ),\n            shape = RoundedCornerShape(12.dp),\n            modifier = Modifier\n                .fillMaxWidth()\n                .height(56.dp)\n        ) {\n            Text(\n                text = if (uiState.isStreaming) "DESLIGAR CAIXINHA DE SOM" else "ATIVAR CAIXINHA DE SOM",\n                fontSize = 16.sp,\n                fontWeight = FontWeight.Bold,\n                color = Color.White\n            )\n        }\n    }\n}\n\n// ============================================================================\n// 3. FOREGROUND SERVICE (MANTÉM O ÁUDIO TOCANDO COM A TELA DO CELULAR APAGADA)\n// ============================================================================\nclass SwitchAudioForegroundService : Service() {\n\n    companion object {\n        const val ACTION_START = "com.example.switchspeaker.ACTION_START"\n        const val ACTION_STOP = "com.example.switchspeaker.ACTION_STOP"\n        const val ACTION_SET_BOOST = "com.example.switchspeaker.ACTION_SET_BOOST"\n\n        const val EXTRA_IP = "extra_ip"\n        const val EXTRA_MODE = "extra_mode"\n        const val EXTRA_LATENCY = "extra_latency"\n        const val EXTRA_USE_UDP = "extra_use_udp"\n        const val EXTRA_BOOST_DB = "extra_boost_db"\n\n        private const val CHANNEL_ID = "switch_speaker_channel"\n        private const val NOTIFICATION_ID = 1001\n    }\n\n    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)\n    private var exoPlayer: ExoPlayer? = null\n    private var rawTcpJob: Job? = null\n    private var loudnessEnhancer: LoudnessEnhancer? = null\n    private var wakeLock: PowerManager.WakeLock? = null\n    private var wifiLock: WifiManager.WifiLock? = null\n    private var currentBoostDb: Int = 0\n\n    override fun onBind(intent: Intent?): IBinder? = null\n\n    override fun onCreate() {\n        super.onCreate()\n        createNotificationChannel()\n    }\n\n    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {\n        when (intent?.action) {\n            ACTION_START -> {\n                val ip = intent.getStringExtra(EXTRA_IP) ?: return START_NOT_STICKY\n                val mode = StreamMode.valueOf(intent.getStringExtra(EXTRA_MODE) ?: StreamMode.RTSP_DEFAULT.name)\n                val latency = LatencyPreset.valueOf(intent.getStringExtra(EXTRA_LATENCY) ?: LatencyPreset.ULTRA_LOW.name)\n                val useUdp = intent.getBooleanExtra(EXTRA_USE_UDP, true)\n                currentBoostDb = intent.getIntExtra(EXTRA_BOOST_DB, 0)\n\n                startForegroundWithNotification("Conectando ao Switch em $ip...")\n                acquireLocks()\n\n                if (mode == StreamMode.RTSP_DEFAULT) {\n                    startRtspAudioEngine(ip, latency, useUdp)\n                } else {\n                    startRawTcpAudioEngine(ip, latency)\n                }\n            }\n            ACTION_SET_BOOST -> {\n                currentBoostDb = intent.getIntExtra(EXTRA_BOOST_DB, 0)\n                applyLoudnessBoost(currentBoostDb)\n            }\n            ACTION_STOP -> {\n                stopAllEngines()\n                stopForeground(STOP_FOREGROUND_REMOVE)\n                stopSelf()\n            }\n        }\n        return START_NOT_STICKY\n    }\n\n    // ------------------------------------------------------------------------\n    // MOTOR 1: RTSP (Porta 6666) - Ignora o vídeo H.264 e reproduz só o áudio\n    // ------------------------------------------------------------------------\n    @OptIn(UnstableApi::class)\n    private fun startRtspAudioEngine(ip: String, latency: LatencyPreset, useUdp: Boolean) {\n        stopAllEngines()\n        val rtspUrl = "rtsp://$ip:${StreamMode.RTSP_DEFAULT.defaultPort}/"\n\n        SpeakerStateHolder.update(\n            isStreaming = true,\n            statusMessage = "Conectando via RTSP em $rtspUrl..."\n        )\n\n        val loadControl = DefaultLoadControl.Builder()\n            .setBufferDurationsMs(\n                latency.minBufferMs,\n                latency.maxBufferMs,\n                latency.startBufferMs,\n                latency.startBufferMs\n            )\n            .setPrioritizeTimeOverSizeThresholds(true)\n            .build()\n\n        val player = ExoPlayer.Builder(this)\n            .setLoadControl(loadControl)\n            .build()\n\n        // Desativa completamente o processamento e renderização de vídeo para economizar bateria e rede\n        player.trackSelectionParameters = player.trackSelectionParameters\n            .buildUpon()\n            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)\n            .build()\n\n        player.setAudioAttributes(\n            androidx.media3.common.AudioAttributes.Builder()\n                .setUsage(C.USAGE_GAME)\n                .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)\n                .build(),\n            true\n        )\n\n        player.addListener(object : Player.Listener {\n            override fun onPlaybackStateChanged(playbackState: Int) {\n                when (playbackState) {\n                    Player.STATE_BUFFERING -> {\n                        SpeakerStateHolder.update(\n                            isStreaming = true,\n                            statusMessage = "Sincronizando buffer de áudio ($ip)..."\n                        )\n                    }\n                    Player.STATE_READY -> {\n                        attachLoudnessEnhancer(player.audioSessionId)\n                        SpeakerStateHolder.update(\n                            isStreaming = true,\n                            statusMessage = "Recebendo áudio 48kHz em tempo real de $ip"\n                        )\n                    }\n                    Player.STATE_ENDED -> {\n                        SpeakerStateHolder.update(\n                            isStreaming = false,\n                            statusMessage = "Transmissão encerrada pelo Switch."\n                        )\n                    }\n                }\n            }\n\n            override fun onPlayerError(error: PlaybackException) {\n                SpeakerStateHolder.update(\n                    isStreaming = false,\n                    statusMessage = "Falha na conexão RTSP (${error.errorCodeName}). Confira se o jogo está aberto e o SysDVR está no modo Simple Network.",\n                    isError = true\n                )\n            }\n        })\n\n        val mediaSource = RtspMediaSource.Factory()\n            .setForceUseRtpTcp(!useUdp) // Se useUdp = true, usa UDP para menor latência\n            .setTimeoutMs(4000L)\n            .createMediaSource(MediaItem.fromUri(rtspUrl))\n\n        player.setMediaSource(mediaSource)\n        player.prepare()\n        player.playWhenReady = true\n        exoPlayer = player\n    }\n\n    // ------------------------------------------------------------------------\n    // MOTOR 2: TCP Bridge PCM Direto (Porta 9922) - PCM 16-bit 48kHz Estéreo\n    // ------------------------------------------------------------------------\n    private fun startRawTcpAudioEngine(ip: String, latency: LatencyPreset) {\n        stopAllEngines()\n        val port = StreamMode.TCP_RAW_PCM.defaultPort\n\n        SpeakerStateHolder.update(\n            isStreaming = true,\n            statusMessage = "Conectando ao fluxo de áudio TCP em $ip:$port..."\n        )\n\n        rawTcpJob = serviceScope.launch(Dispatchers.IO) {\n            val sampleRate = 48000\n            val channelConfig = AudioFormat.CHANNEL_OUT_STEREO\n            val encoding = AudioFormat.ENCODING_PCM_16BIT\n            val minHardwareBuffer = AudioTrack.getMinBufferSize(sampleRate, channelConfig, encoding)\n            val targetBufferBytes = maxOf(minHardwareBuffer, (sampleRate * 4 * latency.minBufferMs) / 1000)\n\n            val audioTrack = AudioTrack.Builder()\n                .setAudioAttributes(\n                    AudioAttributes.Builder()\n                        .setUsage(AudioAttributes.USAGE_GAME)\n                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)\n                        .build()\n                )\n                .setAudioFormat(\n                    AudioFormat.Builder()\n                        .setEncoding(encoding)\n                        .setSampleRate(sampleRate)\n                        .setChannelMask(channelConfig)\n                        .build()\n                )\n                .setBufferSizeInBytes(targetBufferBytes)\n                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)\n                .build()\n\n            withContext(Dispatchers.Main) {\n                attachLoudnessEnhancer(audioTrack.audioSessionId)\n            }\n\n            try {\n                Socket().use { socket ->\n                    socket.tcpNoDelay = true\n                    socket.receiveBufferSize = targetBufferBytes\n                    socket.connect(InetSocketAddress(ip, port), 4000)\n\n                    audioTrack.play()\n                    SpeakerStateHolder.update(\n                        isStreaming = true,\n                        statusMessage = "Reproduzindo PCM 16-bit 48kHz direto de $ip:$port"\n                    )\n\n                    val input: InputStream = socket.getInputStream()\n                    val buffer = ByteArray(2048)\n                    while (isActive) {\n                        val bytesRead = input.read(buffer)\n                        if (bytesRead <= 0) break\n                        audioTrack.write(buffer, 0, bytesRead)\n                    }\n                }\n            } catch (e: Exception) {\n                SpeakerStateHolder.update(\n                    isStreaming = false,\n                    statusMessage = "Erro no socket TCP ($ip:$port): ${e.localizedMessage}",\n                    isError = true\n                )\n            } finally {\n                try {\n                    audioTrack.stop()\n                    audioTrack.release()\n                } catch (_: Exception) {}\n            }\n        }\n    }\n\n    private fun attachLoudnessEnhancer(audioSessionId: Int) {\n        if (audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId == 0) return\n        try {\n            loudnessEnhancer?.release()\n            loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply {\n                setTargetGain(currentBoostDb * 100) // Conversão de dB para mB (milibels)\n                enabled = currentBoostDb > 0\n            }\n        } catch (_: Exception) {}\n    }\n\n    private fun applyLoudnessBoost(boostDb: Int) {\n        try {\n            loudnessEnhancer?.setTargetGain(boostDb * 100)\n            loudnessEnhancer?.enabled = boostDb > 0\n        } catch (_: Exception) {}\n    }\n\n    private fun acquireLocks() {\n        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager\n        if (wakeLock == null) {\n            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SwitchSpeaker::AudioWakeLock").apply {\n                acquire(4 * 60 * 60 * 1000L) // Até 4 horas contínuas\n            }\n        }\n        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager\n        if (wifiLock == null) {\n            val lockType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {\n                WifiManager.WIFI_MODE_FULL_LOW_LATENCY\n            } else {\n                @Suppress("DEPRECATION")\n                WifiManager.WIFI_MODE_FULL_HIGH_PERF\n            }\n            wifiLock = wm.createWifiLock(lockType, "SwitchSpeaker::WifiLowLatencyLock").apply {\n                acquire()\n            }\n        }\n    }\n\n    private fun stopAllEngines() {\n        rawTcpJob?.cancel()\n        rawTcpJob = null\n\n        exoPlayer?.stop()\n        exoPlayer?.release()\n        exoPlayer = null\n\n        try {\n            loudnessEnhancer?.release()\n        } catch (_: Exception) {}\n        loudnessEnhancer = null\n\n        wakeLock?.let { if (it.isHeld) it.release() }\n        wakeLock = null\n\n        wifiLock?.let { if (it.isHeld) it.release() }\n        wifiLock = null\n\n        SpeakerStateHolder.update(\n            isStreaming = false,\n            statusMessage = "Desconectado — Pronto para parear com o Switch"\n        )\n    }\n\n    override fun onDestroy() {\n        stopAllEngines()\n        serviceScope.cancel()\n        super.onDestroy()\n    }\n\n    private fun startForegroundWithNotification(contentText: String) {\n        val stopIntent = Intent(this, SwitchAudioForegroundService::class.java).apply {\n            action = ACTION_STOP\n        }\n        val stopPendingIntent = PendingIntent.getService(\n            this,\n            0,\n            stopIntent,\n            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE\n        )\n\n        val openAppIntent = Intent(this, MainActivity::class.java)\n        val openPendingIntent = PendingIntent.getActivity(\n            this,\n            0,\n            openAppIntent,\n            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE\n        )\n\n        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)\n            .setContentTitle("Switch Wi-Fi Speaker Ativo")\n            .setContentText(contentText)\n            .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)\n            .setContentIntent(openPendingIntent)\n            .setOngoing(true)\n            .addAction(android.R.drawable.ic_media_pause, "Desligar Som", stopPendingIntent)\n            .build()\n\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {\n            startForeground(\n                NOTIFICATION_ID,\n                notification,\n                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK\n            )\n        } else {\n            startForeground(NOTIFICATION_ID, notification)\n        }\n    }\n\n    private fun createNotificationChannel() {\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n            val channel = NotificationChannel(\n                CHANNEL_ID,\n                "Reprodução de Áudio do Switch",\n                NotificationManager.IMPORTANCE_LOW\n            ).apply {\n                description = "Mantém o som do Nintendo Switch tocando em segundo plano"\n            }\n            val manager = getSystemService(NotificationManager::class.java)\n            manager.createNotificationChannel(channel)\n        }\n    }\n}'
+}
+
+def main():
+    for rel_path, content in FILES.items():
+        full_path = os.path.join(PROJECT_ROOT, rel_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    print(f"Projeto completo criado com sucesso na pasta '{PROJECT_ROOT}'!")
+
+if __name__ == "__main__":
+    main()
+```
